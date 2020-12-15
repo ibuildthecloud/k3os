@@ -13,9 +13,7 @@ import (
 )
 
 var (
-	upgradeK3OS, upgradeK3S             bool
-	upgradeKernel, upgradeRootFS        bool
-	doRemount, doSync, doReboot         bool
+	doReboot                            bool
 	sourceDir, destinationDir, lockFile string
 )
 
@@ -25,42 +23,6 @@ func Command() cli.Command {
 		Name:  "upgrade",
 		Usage: "perform upgrades",
 		Flags: []cli.Flag{
-			cli.BoolFlag{
-				Name:        "k3os",
-				EnvVar:      "K3OS_UPGRADE_K3OS",
-				Destination: &upgradeK3OS,
-				Hidden:      true,
-			},
-			cli.BoolFlag{
-				Name:        "k3s",
-				EnvVar:      "K3OS_UPGRADE_K3S",
-				Destination: &upgradeK3S,
-				Hidden:      true,
-			},
-			cli.BoolFlag{
-				Name:        "kernel",
-				Usage:       "upgrade the kernel",
-				EnvVar:      "K3OS_UPGRADE_KERNEL",
-				Destination: &upgradeKernel,
-			},
-			cli.BoolFlag{
-				Name:        "rootfs",
-				Usage:       "upgrade k3os+k3s",
-				EnvVar:      "K3OS_UPGRADE_ROOTFS",
-				Destination: &upgradeRootFS,
-			},
-			cli.BoolFlag{
-				Name:        "remount",
-				Usage:       "pre-upgrade remount?",
-				EnvVar:      "K3OS_UPGRADE_REMOUNT",
-				Destination: &doRemount,
-			},
-			cli.BoolFlag{
-				Name:        "sync",
-				Usage:       "post-upgrade sync?",
-				EnvVar:      "K3OS_UPGRADE_SYNC",
-				Destination: &doSync,
-			},
 			cli.BoolFlag{
 				Name:        "reboot",
 				Usage:       "post-upgrade reboot?",
@@ -95,15 +57,6 @@ func Command() cli.Command {
 				logrus.Errorf("the `destination` cannot be the `source`: %s", destinationDir)
 				os.Exit(1)
 			}
-			if upgradeRootFS {
-				upgradeK3S = true
-				upgradeK3OS = true
-			}
-			if !upgradeK3OS && !upgradeK3S && !upgradeKernel {
-				cli.ShowSubcommandHelp(c)
-				logrus.Error("must specify components to upgrade, e.g. `rootfs`, `kernel`")
-				os.Exit(1)
-			}
 			return nil
 		},
 		Action: Run,
@@ -132,33 +85,10 @@ func Run(_ *cli.Context) {
 
 	var atLeastOneComponentCopied bool
 
-	if upgradeK3OS {
-		if copied, err := system.CopyComponent(sourceDir, destinationDir, doRemount, "k3os"); err != nil {
-			logrus.Error(err)
-		} else if copied {
-			atLeastOneComponentCopied = true
-			doRemount = false
-		}
-	}
-	if upgradeK3S {
-		if copied, err := system.CopyComponent(sourceDir, destinationDir, doRemount, "k3s"); err != nil {
-			logrus.Error(err)
-		} else if copied {
-			atLeastOneComponentCopied = true
-			doRemount = false
-		}
-	}
-	if upgradeKernel {
-		if copied, err := system.CopyComponent(sourceDir, destinationDir, doRemount, "kernel"); err != nil {
-			logrus.Error(err)
-		} else if copied {
-			atLeastOneComponentCopied = true
-			doRemount = false
-		}
-	}
-
-	if atLeastOneComponentCopied && doSync {
-		unix.Sync()
+	if copied, err := system.CopyKernel(sourceDir, destinationDir); err != nil {
+		logrus.Error(err)
+	} else if copied {
+		atLeastOneComponentCopied = true
 	}
 
 	if atLeastOneComponentCopied && doReboot {

@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e -x
+
+cd $(dirname $0)/..
+source scripts/version
+
+TARGET=${1:-sdk}
+shift 1
+docker run -it --privileged -v $(pwd):/usr/src/host --rm ${REPO}/k3os-${TARGET}:${TAG} "$@"

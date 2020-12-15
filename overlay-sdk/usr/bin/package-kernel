@@ -1,0 +1,91 @@
+#!/bin/bash
+set -e
+
+echo Building /output/k3os-usr-${ARCH}.squashfs
+rm -f /output/k3os-usr-${ARCH}.squashfs
+
+ROOT=/usr/src/rootfs
+
+TMP=$(mktemp -d)
+cd $TMP
+
+mkdir rootfs
+cd rootfs
+cp -a ${ROOT}/{bin,lib,lib64,sbin,etc,usr,var} .
+
+# Ensure all packages are added
+ROOT=$(pwd) pkg-add $(grep -v '^#' usr/share/rancher/k3os/packages/add.list)
+
+# Remove some packages we don't want
+rpm --root $(pwd) -e --nodeps $(grep -v '^#' usr/share/rancher/k3os/packages/rm.list)
+
+# cleanup files
+rm -rf \
+    etc/hosts \
+    etc/hostname
+
+# fix up tls
+update-ca-certificates
+rm -f etc/ssl/{ca-bundle.pem,certs}
+cp -a /var/lib/ca-certificates/ca-bundle.pem etc/ssl
+cp -a /var/lib/ca-certificates/pem etc/ssl/certs
+
+# use systemd-resolved (so sad...)
+rm etc/resolv.conf
+ln -s /run/systemd/resolve/resolv.conf etc/resolv.conf
+
+# setup /usr/local
+rm -rf usr/local
+ln -s /var/local usr/local
+
+# ensure oem exists
+mkdir -p usr/share/k3os/oem
+
+# copy kernel info
+mkdir -p usr/boot
+cp -a ${ROOT}/boot/{System.map-*,config-*} usr/boot/
+rpm --root=${ROOT} -qa | sort > usr/boot/packages.txt
+
+# Fix systemd-networkd/resolvd getting disabled
+chroot . systemctl enable systemd-networkd
+chroot . systemctl enable systemd-resolved
+
+# Delete var
+rm -rf var
+
+# Fix symlinks that break moving to /usr
+rm -f usr/bin/{ps,pgrep} usr/sbin/{sysctl}
+ln -sf ../sbin/ip bin/ip
+
+# Move everything to /usr
+for i in usr/*; do
+    if [ -e $(basename $i) ]; then
+        tar cf - $(basename $i) | tar xf - --skip-old-files -C usr
+        rm -rf $(basename $i)
+    fi
+    mv $i .
+done
+rmdir usr
+
+if [ -x share/k3os/packages/post ]; then
+    ./share/k3os/packages/post
+fi
+
+cd ..
+mkdir initrd
+
+VERSION=$(basename $(readlink -f ${ROOT}/boot/initrd) | sed 's/initrd-//')
+
+# Build initrd
+cp ${ROOT}/usr/sbin/k3os initrd/init
+mkdir -p initrd/lib/modules/${VERSION}
+cp ${ROOT}/lib/modules/${VERSION}/kernel/fs/squashfs/squashfs.ko* initrd/lib/modules/${VERSION}
+cp ${ROOT}/lib/modules/${VERSION}/kernel/drivers/block/loop.ko* initrd/lib/modules/${VERSION}
+mksquashfs rootfs initrd/init.squashfs
+cd initrd
+sha256sum init.squashfs > init.squashfs.sha256sum
+find . | cpio -H newc -o | pigz -c -1 > /output/k3os-initrd-${ARCH}
+
+rpm --root=${ROOT} -qa | sort > /output/k3os-packages-${ARCH}.txt
+echo ${VERSION} > /output/k3os-kernel-version-${ARCH}
+cp ${ROOT}/boot/vmlinuz /output/k3os-vmlinuz-${ARCH}

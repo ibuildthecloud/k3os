@@ -1,58 +1,47 @@
 #!/bin/bash
 set -e
 
+. /usr/libexec/k3os/functions
+. /usr/lib/os-release
+
+config_initrd()
+{
+    k3os config --initrd
+}
+
+mount_sys()
+{
+    mount -o remount,rw /
+	do_mkdir $1/run 0755
+	do_mkdir $1/sys 0755
+	do_mkdir $1/proc 0755
+	do_mkdir $1/dev 0755
+	mount -o "nodev,nosuid,noexec,relatime" -t proc proc /proc
+    mount -o "noexec,nosuid,nodev" -t sysfs sysfs /sys
+    mount -o "nosuid,noexec,relatime,size=10m,nr_inodes=248418,mode=755" -t devtmpfs dev /dev
+	mount -o "nodev,nosuid,noexec,relatime,size=10%,mode=755" -t tmpfs tmpfs /run
+}
+
 setup_etc()
 {
-    mkdir -p /etc /proc
+    mkdir -p /etc
     mount -t tmpfs none /etc
-    mount -t proc none /proc
     cp -rfp /usr/etc/* /etc
 }
 
-setup_modules()
+setup_dev()
 {
-    if [ -e .base/lib/modules/$(uname -r) ]; then
-        mount --bind .base/lib/modules /lib/modules
-    fi
-    if [ -e .base/lib/firmware ]; then
-        mount --bind .base/lib/firmware /lib/firmware
-    fi
-}
-
-setup_users()
-{
-    sed -i 's!/bin/ash!/bin/bash!' /etc/passwd
-    mkdir -p /home
-    addgroup -S sudo
-    sed -i 's/^(sudo:.*)/\1rancher/g' /etc/group
-    addgroup -g 1000 rancher
-    adduser -s /bin/bash -u 1000 -D -G rancher rancher
-    echo 'rancher:*' | chpasswd -e
-}
-
-setup_dirs()
-{
-    mkdir -p /run/k3os
-}
-
-setup_config()
-{
-    if [ "$K3OS_MODE" = "local" ]; then
-        return 0
-    fi
-
-    $K3OS_SYSTEM/k3os/current/k3os config --initrd
+    lib/systemd/systemd-udevd --daemon --resolve-names=never
+    udevadm trigger --type=subsystems --action=add
+    udevadm trigger --type=devices --action=add
+    udevadm settle || true
+    udevadm control --exit
 }
 
 setup_etc
+mount_sys
+setup_root
+setup_dev
+config_initrd
 
-. $SCRIPTS/functions
-
-setup_modules
-setup_users
-$K3OS_SYSTEM/k3os/current/k3os rc
-setup_dirs
-setup_kernel
-setup_config
-
-pinfo Bootstrapped
+pinfo Bootstrapped ${PRETTY_NAME}

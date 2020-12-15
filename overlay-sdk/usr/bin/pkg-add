@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+zypper --non-interactive --installroot=${ROOT:-/usr/src/rootfs} install --download-in-advance -y "$@" || \
+zypper --non-interactive --installroot=${ROOT:-/usr/src/rootfs} install --download-in-advance -y "$@"

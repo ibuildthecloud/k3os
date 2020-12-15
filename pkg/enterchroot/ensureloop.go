@@ -2,38 +2,36 @@ package enterchroot
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
-	"os/exec"
 
-	"github.com/docker/docker/pkg/mount"
-	"github.com/pkg/errors"
+	"github.com/rancher/k3os/pkg/insmod"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
 
 func mountProc() error {
-	if ok, err := mount.Mounted("/proc"); ok && err == nil {
-		return nil
-	}
 	logrus.Debug("mkdir /proc")
 	if err := os.MkdirAll("/proc", 0755); err != nil {
 		return err
 	}
 	logrus.Debug("mount /proc")
-	return mount.ForceMount("proc", "/proc", "proc", "")
+	return unix.Mount("proc", "/proc", "proc", 0, "")
 }
 
 func mountDev() error {
-	if files, err := ioutil.ReadDir("/dev"); err == nil && len(files) > 2 {
-		return nil
-	}
 	logrus.Debug("mkdir /dev")
 	if err := os.MkdirAll("/dev", 0755); err != nil {
 		return err
 	}
 	logrus.Debug("mounting /dev")
-	return mount.ForceMount("none", "/dev", "devtmpfs", "")
+	return unix.Mount("none", "/dev", "devtmpfs", 0, "")
+}
+
+func umountSys() error {
+	if err := unix.Unmount("/dev", 0); err != nil {
+		return err
+	}
+	return unix.Unmount("/proc", 0)
 }
 
 func mknod(path string, mode uint32, major, minor int) error {
@@ -41,21 +39,21 @@ func mknod(path string, mode uint32, major, minor int) error {
 		return nil
 	}
 
-	dev := int((major << 8) | (minor & 0xff) | ((minor & 0xfff00) << 12))
+	dev := (major << 8) | (minor & 0xff) | ((minor & 0xfff00) << 12)
 	logrus.Debugf("mknod %s", path)
 	return unix.Mknod(path, mode, dev)
 }
 
 func ensureloop() error {
 	if err := mountProc(); err != nil {
-		return errors.Wrapf(err, "failed to mount proc")
+		return fmt.Errorf("failed to mount proc: %w", err)
 	}
 	if err := mountDev(); err != nil {
-		return errors.Wrapf(err, "failed to mount dev")
+		return fmt.Errorf("failed to mount dev: %w", err)
 	}
 
 	// ignore error
-	exec.Command("modprobe", "loop").Run()
+	insmod.Load("loop")
 
 	if err := mknod("/dev/loop-control", 0700|unix.S_IFCHR, 10, 237); err != nil {
 		return err

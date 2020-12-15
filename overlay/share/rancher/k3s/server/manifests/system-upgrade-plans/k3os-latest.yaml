@@ -55,11 +55,7 @@ spec:
     # upgrade of the kernel component will be skipped (with a warning in the log).
     args:
       - upgrade
-      - --kernel
-      - --rootfs
-      - --remount
-      - --sync
       - --reboot
       - --lock-file=/host/run/k3os/upgrade.lock
-      - --source=/k3os/system
-      - --destination=/host/k3os/system
+      - --source=/
+      - --destination=/host/boot

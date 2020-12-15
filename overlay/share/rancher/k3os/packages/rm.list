@@ -1,0 +1,14 @@
+# Packages to remove from the final /usr image
+perl-base
+rpm
+rpm-config-SUSE
+dracut
+polkit
+pkgconf
+pkgconf-m4
+pkgconf-pkg-config
+gio-branding-openSUSE
+systemd-presets-branding-MicroOS
+systemd-presets-common-SUSE
+wicked
+wicked-service

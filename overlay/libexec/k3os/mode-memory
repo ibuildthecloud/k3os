@@ -1,0 +1,3 @@
+#!/bin/bash
+
+# There's nothing special about memory mode, we on't transfer the root and just boot

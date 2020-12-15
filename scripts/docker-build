@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e -x
+
+cd $(dirname $0)/..
+source scripts/version
+
+TARGET=${1:-artifacts}
+shift 1
+docker build --build-arg TAG=$TAG --build-arg VERSION=${VERSION} --build-arg REPO=${REPO} --build-arg ARCH=${ARCH} --target=$TARGET -t ${REPO}/k3os-${TARGET}:${TAG} . "$@"

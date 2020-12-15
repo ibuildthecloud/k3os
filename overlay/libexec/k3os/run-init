@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+. /usr/libexec/k3os/functions
+
+if [ -e .root/usr ]; then
+    umount .root/usr
+fi
+
+if [ -e .root ]; then
+    umount .root
+    rmdir .root
+fi
+
+exec /sbin/init

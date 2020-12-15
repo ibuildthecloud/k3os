@@ -4,6 +4,7 @@ package transferroot
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -57,7 +58,7 @@ func copyFS(newRoot string) error {
 	rootDev := stat.Dev
 
 	if err = unix.Mount("rootfs", newRoot, "tmpfs", 0, ""); err != nil {
-		return err
+		return fmt.Errorf("failed to mount tmpfs: %w", err)
 	}
 
 	// copy directory tree first
@@ -74,15 +75,15 @@ func copyFS(newRoot string) error {
 		if path == "/" {
 			// the mountpoint already exists but may have wrong mode, metadata
 			if err := os.Chmod(newRoot, info.Mode()); err != nil {
-				return err
+				return fmt.Errorf("failed to chmod %s to %d: %w", newRoot, info.Mode(), err)
 			}
 		} else {
 			if err := os.Mkdir(dest, info.Mode()); err != nil {
-				return err
+				return fmt.Errorf("failed to mkdir %s to %d: %w", dest, info.Mode(), err)
 			}
 		}
 		if err := copyMetadata(info, dest); err != nil {
-			return err
+			return fmt.Errorf("failed to copy metadata %s=>%s: %w", info.Name(), dest, err)
 		}
 		// skip recurse into other filesystems
 		stat := info.Sys().(*syscall.Stat_t)
@@ -161,13 +162,14 @@ func copyFS(newRoot string) error {
 		// TODO copy extended attributes if needed
 		return nil
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to move files: %w", err)
 	}
 
 	// chdir to the new root directory
 	if err := os.Chdir(newRoot); err != nil {
-		return err
+		return fmt.Errorf("failed to chdir %s: %w", newRoot, err)
 	}
+
 	// delete remaining directories in /
 	if err := filepath.Walk("/", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -193,17 +195,17 @@ func copyFS(newRoot string) error {
 			return nil
 		}
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to cleanup: %w", err)
 	}
 
 	// mount --move cwd (/mnt) to /
-	if err := unix.Mount(".", "/", "", unix.MS_MOVE, ""); err != nil {
-		return err
+	if err := unix.Mount(newRoot, "/", "", unix.MS_MOVE, ""); err != nil {
+		return fmt.Errorf("failed to move / mount: %w", err)
 	}
 
 	// chroot to .
 	if err := unix.Chroot("."); err != nil {
-		return err
+		return fmt.Errorf("failed to chroot to .: %w", err)
 	}
 
 	// chdir to "/" to fix up . and ..
@@ -236,7 +238,7 @@ func Relocate() {
 
 		// exec /sbin/init
 		if err := syscall.Exec(nextInit, []string{nextInit}, append(os.Environ(), "K3OS_RELOCATED=true")); err != nil {
-			log.Fatalf("Cannot exec /sbin/init")
+			log.Fatalf("Cannot exec /sbin/init: %v", err)
 		}
 	}
 }

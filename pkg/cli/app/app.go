@@ -5,7 +5,6 @@ import (
 
 	"github.com/rancher/k3os/pkg/cli/config"
 	"github.com/rancher/k3os/pkg/cli/install"
-	"github.com/rancher/k3os/pkg/cli/rc"
 	"github.com/rancher/k3os/pkg/cli/upgrade"
 	"github.com/rancher/k3os/pkg/version"
 	"github.com/sirupsen/logrus"
@@ -36,7 +35,6 @@ func New() *cli.App {
 	}
 
 	app.Commands = []cli.Command{
-		rc.Command(),
 		config.Command(),
 		install.Command(),
 		upgrade.Command(),

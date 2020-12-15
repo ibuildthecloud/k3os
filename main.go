@@ -18,7 +18,6 @@ import (
 func main() {
 	reexec.Register("/init", initrd)      // mode=live
 	reexec.Register("/sbin/init", initrd) // mode=local
-	reexec.Register("enter-root", enterchroot.Enter)
 
 	if !reexec.Init() {
 		app := app.New()
@@ -42,7 +41,7 @@ func initrd() {
 	if err := mount.Mount("", "/", "none", "rw,remount"); err != nil {
 		logrus.Errorf("failed to remount root as rw: %v", err)
 	}
-	if err := enterchroot.Mount("./k3os/data", os.Args, os.Stdout, os.Stderr); err != nil {
+	if err := enterchroot.Mount(); err != nil {
 		logrus.Fatalf("failed to enter root: %v", err)
 	}
 }

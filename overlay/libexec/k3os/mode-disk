@@ -1,8 +1,9 @@
 #!/bin/bash
 
-TARGET=/run/k3os/target
+TARGET=/.root
 
-source /usr/lib/os-release
+. /usr/libexec/k3os/functions
+. /usr/lib/os-release
 
 grow()
 {
@@ -15,10 +16,10 @@ grow()
 setup_mounts()
 {
     mkdir -p $TARGET
-    mount -L K3OS_STATE /run/k3os/target
+    mount -L K3OS_STATE $TARGET
 
-    if [ -e $TARGET/k3os/system/growpart ]; then
-        read DEV NUM < $TARGET/k3os/system/growpart
+    if [ -e $TARGET/.growpart ]; then
+        read DEV NUM < $TARGET/.growpart
         if [ ! -e "${DEV}${NUM}" ]; then
             # /dev/sda2 => /dev/sda2
             # /dev/nvme0n1p2 => /dev/nvme0n1p2
@@ -33,129 +34,79 @@ setup_mounts()
             NUM=$(echo "$PART" | sed 's!.*[^0-9]!!')
         fi
         if [ -e "${PART:=${DEV}${NUM}}" ]; then
-            umount /run/k3os/target
+            umount $TARGET
             grow $DEV $NUM $PART || true
-            mount -L K3OS_STATE /run/k3os/target
+            mount -L K3OS_STATE $TARGET
         fi
-        rm -f $TARGET/k3os/system/growpart
+        rm -f $TARGET/.growpart
     fi
 }
 
-setup_kernel_squashfs()
+cleanup()
 {
-    KER_SRC="/.base/k3os/system/kernel/$(uname -r)/kernel.squashfs"
-    KER_DEST="$TARGET/k3os/system/kernel/$(uname -r)/kernel.squashfs"
-    if [ -e $KER_SRC ] && [ ! -e $KER_DEST ]; then
-        mkdir -p $(dirname ${KER_DEST})
-        cp -r $KER_SRC $KER_DEST
+    if [ -e $TARGET/.factory-reset ] || [ -e $TARGET/.ephemeral ]; then
+        rm -rf $TARGET/*
+    fi
+    rm -f $TARGET/.factory-reset
+}
+
+copy_root()
+{
+    local root=$1
+    local sha=$2
+
+    if [ -e ${root} ] && echo "${SHA}  ${ROOT}" | sha256sum --quiet -c - ; then
+        return 0
+    fi
+
+    rm -f $root
+    mkdir -p $(dirname $root)
+    cp init.squashfs $root
+}
+
+mount_usr()
+{
+    local sha=$(awk '{print $1}' init.squashfs.sha256sum)
+    local root=${TARGET}/var/cache/k3os/root/${sha}
+
+    copy_root $root $sha
+    mkdir -p ${TARGET}/usr
+    mount -t squashfs ${root} ${TARGET}/usr
+
+    local efi=$(blkid -L K3OS_EFI)
+    local boot=$(blkid -L K3OS_BOOT)
+    local oem=$(blkid -L K3OS_OEM)
+
+    if [ -n "$boot" ]; then
+        mount $boot $TARGET/boot
+    fi
+
+    if [ -n "$efi" ]; then
+        mkdir -p $TARGET/boot/efi
+        mount $efi $TARGET/boot/efi
+    fi
+
+    if [ -n "$oem" ]; then
+        mount $oem $TARGET/usr/share/k3os/oem
     fi
 }
 
-setup_k3os()
+move_mounts()
 {
-    if [ -e $TARGET/k3os/system/k3os/current/k3os ]; then
-        return 0
-    fi
-
-    K3OS_SRC=/.base/k3os/system/k3os/current/k3os
-    K3OS_FILE=$TARGET/k3os/system/k3os/${VERSION_ID}/k3os
-
-    if [ ! -e ${K3OS_SRC} ]; then
-        return 0
-    fi
-
-    if [ ! -e ${K3OS_FILE} ]; then
-        mkdir -p $(dirname ${K3OS_FILE}.tmp)
-        cp -f ${K3OS_SRC} ${K3OS_FILE}.tmp
-        mv -f ${K3OS_FILE}.tmp ${K3OS_FILE}
-    fi
-
-    ln -sf ${VERSION_ID} $TARGET/k3os/system/k3os/current
-}
-
-setup_init()
-{
-    if [ -e $TARGET/sbin/init ]; then
-        return 0
-    fi
-
-    mkdir -p $TARGET/sbin
-    ln -sf ../k3os/system/k3os/current/k3os $TARGET/sbin/init
-}
-
-setup_k3s()
-{
-    if [ -e $TARGET/k3os/system/k3s/current/k3s ]; then
-        return 0
-    fi
-
-    for i in $(ls -drt $TARGET/k3os/system/k3s/*); do
-        if [ ! -L "$i" ]; then
-            LATEST=$i
-            break
-        fi
-    done
-
-    if [ -e "${LATEST}" ]; then
-        ln -sf $(basename "${LATEST}") $TARGET/k3os/system/k3s/current
-        return 0
-    fi
-}
-
-takeover()
-{
-    if [ ! -e k3os/system/takeover ]; then
-        return 0
-    fi
-
-    touch k3os/system/factory-reset
-
-    for i in *; do
-        case $i in
-            boot|k3os|sbin)
-                ;;
-            *)
-                rm -rf $i
-        esac
-    done
-    for i in sbin/*; do
-        case $i in
-            sbin/init|sbin/k3s|sbin/k3os)
-                ;;
-            *)
-                rm -rf "$i"
-        esac
-    done
-
-    rm -rf boot/[^g]*
-    rm -f k3os/system/takeover
-    rm -rf k3os/data
-    sync
-    
-    if [ -e k3os/system/poweroff ]; then
-        rm -f k3os/system/poweroff
-        poweroff -f
-    else
-        reboot -f
-    fi
+    mount --move /dev $TARGET/dev
+    mount --move /sys $TARGET/sys
+    mount --move /proc $TARGET/proc
+    mount --move /run $TARGET/run
+    mount --move /etc $TARGET/etc
 }
 
 setup_mounts
-setup_k3os
-setup_kernel_squashfs
-setup_init
-setup_k3s
+cleanup
+setup_root $TARGET
+mount_usr
+move_mounts
 
 cd $TARGET
-
-takeover || true
-
-if [ -e k3os/system/factory-reset ] || [ -e k3os/system/ephemeral ]; then
-    rm -rf k3os/data k3os/system/factory-reset
-fi
-
-losetup -d /dev/loop0 || true
-mount --make-rprivate /
 mkdir -p .root
 pivot_root . .root
-K3OS_MODE=local exec /sbin/init
+cd /

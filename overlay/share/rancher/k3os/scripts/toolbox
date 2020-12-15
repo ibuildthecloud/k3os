@@ -19,7 +19,7 @@ if [ "$1" = "" ]; then
 	echo "rm	 Remove an existing toolbox container" >&2
 	echo >&2
 	echo "Toolbox supports this environment variables:" >&2
-	echo "TOOLBOX_IMAGE	The image to use, such as docker.io/library/fedora:31" >&2
+	echo "TOOLBOX_IMAGE	The image to use, such as docker.io/library/ubuntu:bionic" >&2
 	echo "TOOLBOX_SHELL	The shell to use, such as bash" >&2
 	echo >&2
 	exit 1

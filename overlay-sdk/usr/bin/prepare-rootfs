@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+ROOT=/usr/src/rootfs
+
+# set rancher user
+groupadd -R ${ROOT} -r sudo
+useradd -R ${ROOT} -s /bin/bash -u 1000 -G sudo rancher
+echo 'rancher:*' | chpasswd -R ${ROOT} -e
+ln -sf /dev/null ${ROOT}/usr/lib/systemd/network/99-default.link
+
+sed -i -e "s/%VERSION%/${VERSION}/g" -e "s/%ARCH%/${ARCH}/g" ${ROOT}/usr/lib/os-release

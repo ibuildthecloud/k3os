@@ -1,3 +1,5 @@
 #!/bin/bash
 
+# Install is the same as live but the mode is different so that the installer will be started
+# later in the boot
 source $SCRIPTS/live

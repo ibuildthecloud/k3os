@@ -1,0 +1,46 @@
+#!/bin/bash
+set -e
+
+echo Building /output/k3os-${ARCH}.iso
+
+TMP=$(mktemp -d)
+cd $TMP
+
+mkdir -p iso/boot/grub
+cd iso
+cat > boot/grub/grub.cfg << EOF
+set default=0
+set timeout=10
+
+set gfxmode=auto
+set gfxpayload=keep
+insmod all_video
+insmod gfxterm
+
+menuentry "k3OS LiveCD & Installer" {
+  search.fs_label K3OS root
+  set root=($root)
+  linux /vmlinuz printk.devkmsg=on k3os.mode=live console=ttyS0 console=tty1
+  initrd /initrd
+}
+
+menuentry "k3OS Rescue Shell" {
+  search.fs_label K3OS root
+  set root=($root)
+  linux /vmlinuz printk.devkmsg=on rescue console=ttyS0 console=tty1
+  initrd /initrd
+}
+EOF
+
+cp /output/k3os-initrd* initrd
+cp /output/k3os-vmlinuz* vmlinuz
+
+mkdir oem
+cat > oem/config.yaml << EOF
+# See https://github.com/rancher/k3os/blob/master/README.md#configuration
+# and https://github.com/rancher/k3os/blob/master/README.md#remastering-iso
+# This file is a placeholder for custom configuration when building a custom ISO image.
+EOF
+
+grub2-mkrescue --xorriso=/usr/bin/xorriso-wrapper -o /output/k3os-${ARCH}.iso . -V K3OS && \
+    [ -e /output/k3os-${ARCH}.iso ] # grub-mkrescue doesn't exit non-zero on failure

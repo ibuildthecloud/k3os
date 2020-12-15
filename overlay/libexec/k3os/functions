@@ -1,8 +1,57 @@
 #!/bin/bash
 set -e
 
-export SCRIPTS=/usr/libexec/k3os
-export K3OS_SYSTEM=/.base/k3os/system
+SCRIPTS=/usr/libexec/k3os
+
+rescue() {
+    echo ERROR "Something went wrong, run with cmdline k3os.debug for more logging"
+    echo Dropping to shell
+    exec bash
+}
+
+do_mkdir()
+{
+    mkdir -p $1
+    chmod $2 $1
+}
+
+do_ln()
+{
+    if [ -e $2 ]; then
+        return 0
+    fi
+	rm -f $2
+    ln -sf $1 $2
+}
+
+setup_root()
+{
+    do_mkdir $1/var/cache 0755
+    do_mkdir $1/var/empty 0555
+    do_mkdir $1/var/lib 0755
+    do_mkdir $1/var/lib/ca-certificates 0755
+	do_mkdir $1/var/local/bin 0755
+	do_mkdir $1/var/lock 0755
+	do_mkdir $1/var/log 0755
+	do_mkdir $1/var/opt 0755
+	do_mkdir $1/var/spool 0755
+	do_mkdir $1/var/tmp 01777
+	do_mkdir $1/etc 0755
+	do_mkdir $1/home 0755
+	do_mkdir $1/tmp 0755
+	do_mkdir $1/run 0755
+	do_mkdir $1/dev 0755
+	do_mkdir $1/sys 0755
+	do_mkdir $1/proc 0755
+	do_mkdir $1/boot 0755
+    do_ln ../run $1/var/run
+    do_ln usr/bin $1/bin
+    do_ln usr/lib $1/lib
+    do_ln usr/lib64 $1/lib64
+    do_ln usr/sbin $1/sbin
+    do_ln ../../etc/ssl/certs $1/var/lib/ca-certificates/pem
+    do_ln ../../etc/ssl/ca-bundle.pem $1/var/lib/ca-certificates/ca-bundle.pem
+}
 
 reinit_debug()
 {
@@ -33,23 +82,6 @@ reinit_debug()
     fi
 }
 
-setup_kernel()
-{
-    KERNEL=${K3OS_SYSTEM}/kernel/$(uname -r)/kernel.squashfs
-    if [ ! -e ${KERNEL} ]; then
-        return 0
-    fi
-
-    mkdir -p /run/k3os/kernel
-    mount -t squashfs $KERNEL /run/k3os/kernel
-
-    mount --bind /run/k3os/kernel/lib/modules /lib/modules
-    mount --bind /run/k3os/kernel/lib/firmware /lib/firmware
-    mount --bind /run/k3os/kernel/headers /usr/src
-
-    umount /run/k3os/kernel
-}
-
 perr()
 {
     echo "[ERROR]" "$@" 1>&2
@@ -58,24 +90,13 @@ perr()
 pfatal()
 {
     echo "[FATAL]" "$@" 1>&2
+    rescue
     exit 1
 }
 
 pinfo()
 {
     echo " * " "$@"
-}
-
-cleanup()
-{
-    rm -rf /run/k3os
-    unset SCRIPTS
-    unset K3OS_SYSTEM
-    if [ -n "$K3OS_MODE" ]; then
-        mkdir -p /run/k3os
-        echo "$K3OS_MODE" > /run/k3os/mode
-    fi
-    unset K3OS_MODE
 }
 
 reinit_debug

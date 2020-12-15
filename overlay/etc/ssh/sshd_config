@@ -5,5 +5,6 @@ AllowTcpForwarding      no
 GatewayPorts            no
 PasswordAuthentication  no
 X11Forwarding           no
+PermitRootLogin         no
 
 Subsystem   sftp    internal-sftp

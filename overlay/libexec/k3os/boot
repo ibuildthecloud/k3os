@@ -1,14 +1,7 @@
 #!/bin/bash
 
-setup_ttys()
+check_rescue()
 {
-    for i in 1 2 3 4 5 6; do
-        if [ -e /dev/tty${i} ]; then
-            echo 'tty'$i'::respawn:/sbin/getty 38400 tty'$i >> /etc/inittab
-            echo tty$i >> /etc/securetty
-        fi
-    done
-
     for x in $(cat /proc/cmdline); do
     case $x in
         rescue)
@@ -16,8 +9,7 @@ setup_ttys()
             ;;
         console=*)
             TTY=${x#console=}
-            if [ -e /dev/${TTY} ] && ! grep -q "^${TTY}::" /etc/inittab; then
-                echo "${TTY}::respawn:/sbin/getty -L ttyS0 115200 vt100" >> /etc/inittab
+            if [ -e /dev/${TTY} ]; then
                 echo ${TTY} >> /etc/securetty
             fi
             ;;
@@ -25,56 +17,15 @@ setup_ttys()
     done
 }
 
-setup_sudoers()
-{
-    echo '%sudo   ALL = (ALL) ALL' > /etc/sudoers.d/sudo
-    echo 'rancher ALL = (ALL) NOPASSWD: ALL' >> /etc/sudoers.d/sudo
-}
-
-setup_services()
-{
-    for i in hwdrivers dmesg devfs loadkmap udev udev-trigger; do
-        ln -s /etc/init.d/$i /etc/runlevels/sysinit
-    done
-
-    for i in acpid hwclock syslog bootmisc hostname sysctl modules connman dbus haveged open-vm-tools issue; do
-        ln -s /etc/init.d/$i /etc/runlevels/boot
-    done
-
-    for i in sshd "local" ccapply iscsid; do
-        ln -s /etc/init.d/$i /etc/runlevels/default
-    done
-
-    for i in savecache killproces mount-ro; do
-        ln -s /etc/init.d/$i /etc/runlevels/shutdown
-    done
-}
-
-setup_config()
-{
-    k3os config --boot
-    if [ -e /etc/conf.d/udev-settle ]; then
-        ln -s /etc/init.d/udev-settle /etc/runlevels/sysinit/
-    fi
-    if [ -e /var/lib/connman/cloud-config.config ]; then
-        echo 'rc_want="wpa_supplicant"' >> /etc/conf.d/connman
-    fi
-    if [ -e /etc/conf.d/cloud-config ]; then
-        ln -s /etc/init.d/cloud-config /etc/runlevels/boot/
-    fi
-    if [ -e /etc/conf.d/qemu-guest-agent ]; then
-        ln -s /etc/init.d/qemu-guest-agent /etc/runlevels/boot/
-    fi
-    if [ -e /etc/conf.d/rngd ]; then
-        ln -s /etc/init.d/rngd /etc/runlevels/boot/
-    fi
-}
-
-setup_root()
+setup_users()
 {
     if [ ! -e /root ]; then
         mkdir -p /root
         chmod 0700 /root
+    fi
+    if [ ! -e /home/rancher ]; then
+        mkdir -p /home/rancher
+        chown rancher /home/rancher
     fi
 }
 
@@ -108,29 +59,16 @@ setup_hostname()
         return 0
     fi
 
+    local mac="$(</sys/class/net/eth0/address)"
+    if [ -z "$mac" ]; then
+        mac=${RANDOM}
+        return 0
+    fi
+
     mkdir -p /var/lib/rancher/k3os
-    HOSTNAME=k3os-${RANDOM}
+    HOSTNAME=k3os-${mac}
     echo $HOSTNAME > /var/lib/rancher/k3os/hostname
     cp /var/lib/rancher/k3os/hostname /etc/hostname
-
-}
-
-setup_mounts()
-{
-    if [ -d /.base/boot ]; then
-        mkdir -p /boot
-        mount --bind /.base/boot /boot
-    fi
-
-    if [ -e /.base/k3os/system ]; then
-        mkdir -p /k3os/system
-        mount -o ro --bind /.base/k3os/system /k3os/system
-    fi
-
-    # Twice on purpose.  A live system double mounts this
-    while mountpoint -q /.base; do
-        umount -l /.base
-    done
 }
 
 setup_manifests()
@@ -173,14 +111,28 @@ grow_live()
     fi
 }
 
-setup_mounts
+setup_ssh()
+{
+    if [ ! -e /var/lib/rancher/k3os/ssh ]; then
+        mkdir -p /var/lib/rancher/k3os
+        cp -rf /etc/ssh /var/lib/rancher/k3os/ssh
+    fi
+    rm -rf /etc/ssh
+    ln -s /var/lib/rancher/k3os/ssh /etc/ssh
+}
+
+setup_rancher_node()
+{
+    mkdir -p /etc/rancher
+    mkdir -p /var/lib/rancher/k3os/node
+    ln -s /var/lib/rancher/k3os/node /etc/rancher/
+}
+
+setup_ssh
+setup_rancher_node
 grow_live
 setup_hostname
 setup_hosts
-setup_root
-setup_ttys
-setup_sudoers
-setup_services
-setup_config
+setup_users
+check_rescue
 setup_manifests
-cleanup
