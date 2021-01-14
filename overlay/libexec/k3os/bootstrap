@@ -38,8 +38,9 @@ setup_dev()
     udevadm control --exit
 }
 
-setup_etc
 mount_sys
+reinit_debug
+setup_etc
 setup_root
 setup_dev
 config_initrd
